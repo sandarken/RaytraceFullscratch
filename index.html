@@ -1,0 +1,216 @@
+<html>
+  <head>
+    <title>フルスクラッチレイトレーシング</title>
+    <script type="text/javascript" src="SceneBuffer.js"></script><!--レンダリング画像生成用バッファ定義-->
+    <script type="text/javascript" src="Vector3.js"></script><!--3次元ベクトル定義-->
+    <script type="text/javascript" src="Light.js"></script><!--光源定義-->
+    <script type="text/javascript" src="Shading.js"></script><!--マテリアル（シェーディングモデル）定義-->
+    <script type="text/javascript" src="Obj.js"></script><!--ポリゴン集合定義-->
+    <script type="text/javascript" src="Polygon.js"></script><!--ポリゴン定義-->
+    <script type="text/javascript" src="Ray.js"></script><!--レイ定義-->
+    <script type="text/javascript" src="Geometry.js"></script><!--ポリゴン、光源、マテリアルを管理するためのクラス定義-->
+    <script type="text/javascript" src="Renderer.js"></script><!--レンダリング処理-->
+    <script type="text/javascript" src="Controller.js"></script><!--キー操作（押し、離しの管理）-->
+    <script type="text/javascript" src="obj/init/InitResource.js"></script><!--起動時に自動的に読み込むデータ格納用-->
+    <script type="text/javascript">
+        onload = function() {
+            init();
+        };
+        var Rerenderflag=false;//再レンダリングを要求するフラグ
+        var Canvas;//キャンバス
+        var ctx;//キャンバスのコンテキスト
+        var Geometry;//レンダリング対象のジオメトリ情報
+        var changeflag=true;//再レンダリングの必要可否
+
+        var fpsmonitor;//fps表示領域(html)
+        var fps=10;//フレームレート
+        var flamedelta=Math.ceil(1000/fps);//フレームレート用のデルタ時間
+        var framestart;//フレーム開始時刻の格納
+        
+        var w,h;//キャンバスの大きさ
+        var cancelEvent = function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            return false;
+        };
+        var renderer;//レンダラクラス
+
+
+        function init() {
+            canvas = document.getElementById('c1');
+            if ( ! canvas || ! canvas.getContext ) { return false; }
+            ctx = canvas.getContext('2d');
+            w=canvas.width;
+            h=canvas.height;
+            changeflag=true;
+            while(ctx==null);
+            Geometry=new Geom();
+            renderer=new RenderRaytrace(w/2,h,new Vector3(0,2.0,4.1),new Vector3(0,0,-1),180,120);//レンダラの初期化
+            document.addEventListener("keydown", KeyDownFunc);
+            document.addEventListener("keyup", KeyUpFunc);
+            var objfile= document.getElementById("objfile");
+            Geometry.addobj(InitObjstr);
+            Geometry.addmtl(InitMtlstr);
+            objfile.addEventListener("change", function(evt){
+                var file = evt.target.files;//ファイル情報の取得
+                var reader = new FileReader();//FileReaderの作成
+                reader.readAsText(file[0]);//テキスト形式で読み込む
+                reader.onload = function(ev){//読込終了後の処理    
+                    Geometry.addobj(reader.result);//ジオメトリにオブジェクトを格納する
+                    changeflag=true;
+                }
+            },false);
+            var mtlfile= document.getElementById("mtlfile");
+            mtlfile.addEventListener("change", function(evt){
+                var file = evt.target.files;//ファイル情報の取得
+                var reader = new FileReader();//FileReaderの作成
+                reader.readAsText(file[0]);//テキスト形式で読み込む
+                reader.onload = function(ev){//読込終了後の処理    
+                    Geometry.addmtl(reader.result);//ジオメトリにマテリアルを格納する
+                    changeflag=true;
+                }
+            },false);
+            fpsmonitor= document.getElementById("fps");
+            ctx.strokeStyle = "black";
+            ctx.fillStyle = "red";
+            ctx.font = "16px 'ＭＳ Ｐゴシック'";
+            framestart=Date.now();
+            flamedelta=Math.ceil(1000/fps);
+        }
+        /*キー操作関連*/
+        var LeftFlg = new KeyButton(65);
+        var RightFlg = new KeyButton(68);
+        var UpFlg = new KeyButton(87);
+        var DownFlg = new KeyButton(83);
+        var SpaceFlg = new KeyButton(32);
+        var ShiftFlg = new KeyButton(16);
+        var keys =[LeftFlg,RightFlg,UpFlg,DownFlg,SpaceFlg,ShiftFlg];
+        function KeyDownFunc(e){
+            //console.log("down"+e.keyCode);//デバッグ用
+            for(let i=0;i<keys.length;i++){
+                keys[i].KeyDown(e.keyCode);
+            }
+        }
+        function KeyUpFunc(e){
+            //console.log("up"+e.keyCode);//デバッグ用
+            for(let i=0;i<keys.length;i++){
+                keys[i].KeyUp(e.keyCode);
+            }
+        }
+        function update(){
+           
+            if(ShiftFlg.GetKey()){
+                if(LeftFlg.GetKey()){renderer.pos.x-=0.1;changeflag=true;}
+                if(RightFlg.GetKey()){renderer.pos.x+=0.1;changeflag=true;}
+                if(UpFlg.GetKey()){renderer.pos.y-=0.1;changeflag=true;}
+                if(DownFlg.GetKey()){renderer.pos.y+=0.1;changeflag=true;}
+            }else{
+                if(LeftFlg.GetKey()){renderer.pos.x-=0.1;changeflag=true;}
+                if(RightFlg.GetKey()){renderer.pos.x+=0.1;changeflag=true;}
+                if(UpFlg.GetKey()){renderer.pos.z-=0.1;changeflag=true;}
+                if(DownFlg.GetKey()){renderer.pos.z+=0.1;changeflag=true;}
+            }
+            if(changeflag){//キー入力によるカメラ移動を検知した場合
+                Rerenderflag=true;//再レンダリングを要求する
+            }
+            changeflag=false;
+            renderer.updateStatesInfo();
+        }
+        function draw() {
+            let deltatime=Date.now()-framestart;
+            framestart=Date.now();
+            update();
+            renderer.render(Geometry);//レンダリングの実行
+            renderer.scene.ColorCovert();//ベクトルバッファの方に格納した色を描画バッファに移す
+            renderer.scene.draw(0,0,1,ctx);
+            renderer.debug.draw(renderer.scene.w,0,2,ctx);
+            renderer.DebugZbuffer.draw(renderer.scene.w+renderer.debug.w/2,0,2,ctx);
+            renderer.DebugLighting.draw(renderer.scene.w,renderer.debug.h/2,2,ctx);
+            renderer.DebugReflect.draw(renderer.scene.w+renderer.debug.w/2,renderer.debug.h/2,2,ctx);
+            fpsmonitor.innerHTML=Math.ceil(1000/(deltatime))+"fps";
+        }
+        setInterval(draw,flamedelta);
+    </script>
+  </head>
+   <style type="text/css">
+        canvas {width: 100%; background-color:#000; border: 1px solid #999; }
+        .UI {width:50%; float:left;}
+        .tab_wrap{width:90%; margin:5% auto;}
+        input[type="radio"]{display:none;}
+        
+        .tab_area label{width:31%;display:inline-block; padding:2% 0; color:#999; background:#ddd; text-align:center; font-size:13px; cursor:pointer; transition:ease 0.2s opacity;}
+        .tab_area label:hover{opacity:0.5;}
+        .panel_area{background:#ddd;margin: 0 0 0 0;}
+        .tab_panel{ width:90%; margin:2.5%; display:none; padding: 2.5% 2.5% 2.5% 2.5%;}
+        #tab1:checked ~ .tab_area .tab1_label{background:#fff; color:#000;}
+        #tab1:checked ~ .panel_area #panel1{display:block;}
+        #tab2:checked ~ .tab_area .tab2_label{background:#fff; color:#000;}
+        #tab2:checked ~ .panel_area #panel2{display:block;}
+        #tab3:checked ~ .tab_area .tab3_label{background:#fff; color:#000;}
+        #tab3:checked ~ .panel_area #panel3{display:block;}
+        .Contentbox div{padding: 2.5%;margin: 5 auto 5 auto;  color:#000;background:#fff;border-top: solid 6px #555;border-radius: 9px;}
+        .Contentbox p {margin: 0; padding: 0;}
+
+        .Contentbox .label{cursor: pointer;color:#000;padding:1px;border: 1px solid #434343; border-radius: 5px;background:#fff;border-bottom: solid 6px #555;}
+        .Contentbox input[type=checkbox] {display: none;}
+        .Contentbox input[type=checkbox]:checked + .label {background-color: #C00; color:#FFF; border-top: solid 6px #CAA;border-bottom: solid 1px #500;}
+        .Contentbox .label:hover {background-color: #dd6;border-bottom: solid 6px #995;}
+
+    </style>
+<body>
+    <div id="fps"></div>
+    <canvas id="c1" width="640" height="240"></canvas>
+    <div class="UI">
+        <div class="tab_wrap">
+            <input id="tab1" type="radio" name="tab_btn"　checked>
+            <input id="tab2" type="radio" name="tab_btn">
+            <input id="tab3" type="radio" name="tab_btn">
+        
+            <div class="tab_area">
+                <label class="tab1_label" for="tab1">ﾏﾃﾘｱﾙ</label>
+                <label class="tab2_label" for="tab2">ｵﾌﾞｼﾞｪｸﾄ</label>
+                <label class="tab3_label" for="tab3">光源/ｶﾒﾗ</label>
+            </div>
+            <div class="panel_area">
+                <div id="panel1" class="tab_panel">
+                    <div>マテリアルデータインポート(.mtl)<input type="file" id="mtlfile"></div>
+                    <p id="mat" class="Contentbox"></p>
+                </div>
+                <div id="panel2" class="tab_panel">
+                    <div>3Dデータインポート(.obj)<input type="file" id="objfile"></div>
+                    <p id="obj" class="Contentbox"></p>
+                </div>
+                <div id="panel3" class="tab_panel">
+                    <p id="render" class="Contentbox"></p>
+                    <p id="light" class="Contentbox"></p>
+                </div>
+            </div>
+        </div>
+        
+    </div>
+    <div class="UI">
+        <h2>概要:レイトレーシングプログラム</h2>
+        webGL等のライブラリを使用するタイプのものはサンプルが多く存在するので,
+        javascript+canvasでライブラリは一切使わないという縛りで０からフルスクラッチしました．<br>
+        タブ機能などの一部のCSSは参考サイトからの移植ですがインターセクトやUIの処理含めシェーディングやジオメトリに関する処理は全て自作です．</br>
+        動作テストはChoromeにて行いました．</br>
+        実装した処理の内容は以下の通りです.</br>
+        <h4>レンダリング</h4>
+        ・レイトレーシング</br>
+        ・頂点法線同士のバイリニア補完(Phongシェーディング)による法線スムージング</br>
+        ・Burleyの拡散モデルとCook-TorranceのスペキュラBRDFモデルによるPBRシェーディング</br>
+        ・再帰的アルゴリズムによる鏡面反射成分の導出(ラフネスによる鏡面のぼかしには対応していません)</br>
+
+        <h4>UI</h4>
+        ・obj,mtlの読み込み(Nゴン対応)</br>
+        ・マテリアルパラメータの編集<br>
+        ・オブジェクトグループの消去<br>
+        ・光源の編集・消去<br>
+        ・FOVの変更<br>
+        ・キー操作によるカメラ移動<br>
+
+        <br>
+        CPUレンダリングの上，昨今の事情によりブラウザ上の処理が重すぎるとマルウェアソフト対策ソフトなどが騒ぎ出すので，レンダリングを実際に行っているのは処理時間の約半分にしています<br>
+    </div>
+</body>
+</html>
