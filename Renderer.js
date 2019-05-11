@@ -63,6 +63,7 @@ class RenderRaytrace{
         if(this.reflectflag)this.UI.innerHTML += '<input type="checkbox" class="checkbox" name="Reflecting" id="Reflecting" checked="checked">';
         else this.UI.innerHTML += '<input type="checkbox" class="checkbox" name="Reflecting" id="Reflecting">';
         this.UI.innerHTML += '<label class="label" for="Reflecting">鏡面反射</label><br>';
+
     }
     setRender(){
         var from_child =  this.UI.children;// UIの子要素を取得
@@ -172,8 +173,7 @@ class RenderRaytrace{
                     this.renderpow=4;
                 }
             break;
-            case 3:
-                
+            case 3://完了
             break;
         }
     }
@@ -187,6 +187,31 @@ class RenderRaytrace{
                 }
             }
         }
+    }
+    //SSAOを行う関数．
+    SSAO(rendersize,geom){
+        //途中中断したレンダリングを再開するための変数
+        let progressX=this._Interruptionpos%this.scene.w;
+        let progressY=Math.floor(this._Interruptionpos/this.scene.w);
+        for(let y=progressY;y<this.scene.h;y+=rendersize){
+            for(let x=progressX;x<this.scene.w;x+=rendersize){
+                let bufferpos=y*this.scene.w+x;
+                if(this.renderdstates[bufferpos]==3){//対応ピクセルがシェーディング済ならシャドウイングを行う
+                    let Sample=0;
+                    //実装したい
+                    this.renderdstates[bufferpos]=4;//シャドウイングを完了状態にする
+                    /*//レンダリング開始から描画周期の半分以上の時間がかかっている場合，
+                    時間切れと判断し,作業を打ち切って表示する */
+                    if(Date.now()-framestart>flamedelta/2){
+                        this._Interruptionpos=bufferpos;//この処理におけるレンダリング行程進捗度にはbufferposを格納
+                        return;
+                    }
+                }
+            }
+            progressX=0;
+        }
+        this._Interruptionpos=0;//レンダリングが一回り終了したので進捗度を初期化
+        this.renderpow--;
     }
     //シャドウイングを行う関数．影が出来ると判断した部位のみ更新するのでシェーディングをあらかじめやっておくことが前提
     Shadowing(rendersize,geom){
