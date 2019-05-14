@@ -1,7 +1,8 @@
 objpath="colal.obj"
 mtlpath="colal.mtl"
 outputresource = 'InitResource.js'
-#
+#起動時に読み込むデータ(InitResource.js)を作成する（objのままだとローカル環境でのデバッグにひと手間要るので）
+#Objの内容をStringデータ化しているだけです
 with open(outputresource, mode='w') as f:#アウトプットデータの作成
     f.write("var InitObjstr=\"")#Objファイルの初期リソースデータ作成
     with open(objpath) as r:
